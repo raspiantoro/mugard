@@ -28,21 +28,6 @@ func clone(val interface{}, valType valueType) (newVal interface{}, err error) {
 		return
 	}
 
-	// if reflect.ValueOf(val).Kind() != reflect.Ptr {
-	// 	err = fmt.Errorf("expecting *%s instead of %s", reflect.ValueOf(val).Kind(), reflect.ValueOf(val).Kind())
-	// 	return
-	// }
-
-	// var value interface{}
-	// switch valType {
-	// case typeString:
-	// 	value = reflect.Indirect(reflect.ValueOf(val)).Interface().(string)
-	// case typeInt8:
-	// 	value = reflect.Indirect(reflect.ValueOf(val)).Interface().(int8)
-	// }
-
-	// newVal = value
-
 	switch valType {
 	case typeString:
 		newVal = reflect.Indirect(reflect.ValueOf(val)).Interface().(string)
