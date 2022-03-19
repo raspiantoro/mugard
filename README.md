@@ -1,11 +1,20 @@
-package main
+# Mugard
 
-import (
-	"fmt"
+Mugard is a simple extension for Mutex in golang. Inspired by Mutex in Rust Language, Mugard is protecting the data (resources) instead of protecting the code, read this [blog posts](https://medium.com/@deckarep/paradigms-of-rust-for-the-go-developer-210f67cd6a29#:~:text=Paradigm%20shift%3A%20Lock%20data%20not%20code) for more informations.
 
-	"github.com/raspiantoro/mugard"
-)
+## Requirements
+```
+Go 1.18
+```
+Since mugard using Generic Type. It's required to be used with **Go 1.18**
 
+## How to install
+```bash
+go get github.com/raspiantoro/mugard
+```
+
+## Example usage
+```go
 func main() {
 	guard := mugard.NewGuard(10)
 
@@ -65,7 +74,13 @@ func main() {
 	// in this case it will cause a deadlock, since the previous process not
 	// releasing the write access yet
 	_ = guard.GetWrite()
-
-	// won't reach
-	fmt.Println(anotherWriteResource)
 }
+```
+
+## Contributing
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+Please make sure to update tests as appropriate.
+
+## License
+[MIT](https://choosealicense.com/licenses/mit/)

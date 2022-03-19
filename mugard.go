@@ -1,85 +1,75 @@
 package mugard
 
 import (
-	"reflect"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
 
-type valueType uint64
-
-const (
-	typeString valueType = iota
-	typeInt8
-	typeInt16
-	typeInt32
-	typeInt64
-	typeUint8
-	typeUint16
-	typeUint32
-	typeUint64
-	typeSlice
-	typeInterface
-)
-
-func clone(val interface{}, valType valueType) (newVal interface{}, err error) {
-	if val == nil {
-		err = ErrNilValue
-		return
-	}
-
-	switch valType {
-	case typeString:
-		newVal = reflect.Indirect(reflect.ValueOf(val)).Interface().(string)
-		return
-	case typeInt8:
-		newVal = reflect.Indirect(reflect.ValueOf(val)).Interface().(int8)
-		return
-	}
-
-	return
-}
-
-type guard struct {
-	sync.RWMutex
-	val     interface{}
+type Guard[T any] struct {
+	*sync.RWMutex
 	counter uint64
+	val     T
 }
 
-func newGuard() *guard {
-	return &guard{
+func NewGuard[T any](val T) *Guard[T] {
+	return &Guard[T]{
+		RWMutex: &sync.RWMutex{},
+		val:     val,
 		counter: 0,
-		RWMutex: sync.RWMutex{},
 	}
 }
 
-func (g *guard) getReadLock(val interface{}, valType valueType) (newVal interface{}, err error) {
-	g.RLock()
-	newVal, err = g.getRead(val, valType)
-	return
+func (g *Guard[T]) GetRead() T {
+	return g.val
 }
 
-func (g *guard) getRead(val interface{}, valType valueType) (newVal interface{}, err error) {
-	newVal, err = clone(val, valType)
-	return
+func (g *Guard[T]) GetReadLock() T {
+	g.RWMutex.RLock()
+	return g.val
 }
 
-func (g *guard) askWrite() (err error) {
+func (g *Guard[T]) ReleaseRead() {
+	g.RWMutex.RUnlock()
+}
+
+func (g *Guard[T]) TryGetWrite() (*T, error) {
 	if g.counter > 0 {
-		err = ErrMultipleWrite
-		return
+		return nil, ErrMultipleWrite
 	}
 
-	g.Lock()
+	g.RWMutex.Lock()
 	atomic.AddUint64(&g.counter, 1)
-	return
+	return &g.val, nil
 }
 
-func (g *guard) ReleaseWrite() {
-	g.Unlock()
+func (g *Guard[T]) GetWrite() *T {
+	g.RWMutex.Lock()
+	atomic.AddUint64(&g.counter, 1)
+	return &g.val
+}
+
+func (g *Guard[T]) ReleaseWrite(holders **T) error {
+	if g.counter <= 0 {
+		return ErrNoLockedResources
+	}
+
+	// if the holders keep the write access, it's should be
+	// pointing to g.val address
+	if unsafe.Pointer(*holders) != unsafe.Pointer(&g.val) {
+		return ErrNotHoldingWriteAccess
+	}
+
+	// put temp on the heap, so it's still there
+	// when this function goes out of scope
+	temp := new(T)
+	*temp = g.val
+
+	// make holders as read only by changing the pointing address
+	*holders = temp
+
+	g.RWMutex.Unlock()
 	atomic.AddUint64(&g.counter, ^uint64(0))
-}
 
-func (g *guard) ReleaseRead() {
-	g.RUnlock()
+	return nil
 }
