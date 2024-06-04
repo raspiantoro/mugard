@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/raspiantoro/mugard"
 )
@@ -9,63 +11,144 @@ import (
 func main() {
 	guard := mugard.NewGuard(10)
 
-	readResourceOne := guard.GetRead()
+	readResourceOne := guard.Read()
 
-	fmt.Println("readResourceOne: ", readResourceOne)
+	fmt.Println("[Read] readResourceOne: ", readResourceOne)
 
 	// only modify the value of readResourceOne, without
 	// affecting the value inside the Guard
 	readResourceOne = 20
 
-	readResourceTwo := guard.GetReadLock()
+	guard.ReadLock(func(val int) {
+		// Perform your read operation inside this closure while the read lock is held.
+		readResources := val
 
-	// should print 10
-	fmt.Println("readResourceTwo: ", readResourceTwo)
+		// should print 10
+		fmt.Println("[ReadLock] readResource: ", readResources)
+	})
 
-	guard.ReleaseRead()
+	wg := sync.WaitGroup{}
 
-	writeResource := guard.GetWrite()
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
 
-	// modifying value of writeResource also modifying
-	// the value inside the guard
-	*writeResource = 30
+		// Able to run multiple ReadLocks concurrently.
+		go func() {
+			defer wg.Done()
+			guard.ReadLock(func(val int) {
+				readResources := val
 
-	// data inside the guard already modify by writeResource
-	readResourceThree := guard.GetRead()
-
-	// should print 30
-	fmt.Println("readResourceThree: ", readResourceThree)
-
-	// releasing write access, so other resources
-	// can have the write access
-	err := guard.ReleaseWrite(&writeResource)
-	if err != nil {
-		fmt.Println(err)
+				// should print 10
+				fmt.Println("[ReadLock] readResource: ", readResources)
+				time.Sleep(500 * time.Millisecond)
+			})
+		}()
 	}
 
-	// writeResource is read only now,
-	// modify it's value won't affect the data inside the guard
-	*writeResource = 100
+	wg.Wait()
+	wg.Add(2)
 
-	readResourceFour := guard.GetRead()
+	go func() {
+		defer wg.Done()
+		guard.Write(func(val *int) {
+			// Perform your write operation inside this closure.
+			*val = *val + 5
 
-	// should print 30
-	fmt.Println("readResourceFour: ", readResourceFour)
+			fmt.Println("[Write] readResource: ", *val)
 
-	writeResource = guard.GetWrite()
+			time.Sleep(1 * time.Second)
+		})
+	}()
 
-	// won't block the process
-	anotherWriteResource, err := guard.TryGetWrite()
+	go func() {
+		defer wg.Done()
+
+		time.Sleep(500 * time.Millisecond)
+
+		// this will hold until TryWrite finish
+		guard.ReadLock(func(val int) {
+			readResources := val
+
+			// should print 15
+			fmt.Println("[ReadLock] readResource: ", readResources)
+
+		})
+	}()
+
+	wg.Wait()
+	wg.Add(1)
+
+	errChan := make(chan error)
+
+	go func() {
+		defer wg.Done()
+		guard.Write(func(val *int) {
+			// Perform your write operation inside this closure.
+			*val = *val + 5
+
+			fmt.Println("[Write] readResource: ", *val)
+
+			time.Sleep(1 * time.Second)
+		})
+	}()
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		// It should return an error when there is another Write,
+		// but it does not block the current goroutine because the ReadLock is never called.
+		errChan <- guard.TryReadLock(func(val int) {
+			// Perform your write operation inside this closure.
+			resources := val
+
+			fmt.Println("[TryReadLock] readResource: ", resources)
+
+			time.Sleep(1 * time.Second)
+		})
+	}()
+
+	err := <-errChan
 	if err != nil {
-		fmt.Println(err)
+		// Error should be printed
+		fmt.Println("[TryReadLock] error: ", err)
 	}
 
-	// should block the process until previous resource that hold the value
-	// releasing their write access.
-	// in this case it will cause a deadlock, since the previous process not
-	// releasing the write access yet
-	_ = guard.GetWrite()
+	wg.Wait()
+	wg.Add(1)
 
-	// won't reach
-	fmt.Println(anotherWriteResource)
+	go func() {
+		defer wg.Done()
+		guard.Write(func(val *int) {
+			// Perform your write operation inside this closure.
+			*val = *val + 5
+
+			fmt.Println("[Write] readResource: ", *val)
+
+			time.Sleep(1 * time.Second)
+		})
+	}()
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		// It should return an error when there is another Write,
+		// but it does not block the current goroutine because the lock is never called.
+		errChan <- guard.TryWrite(func(val *int) {
+			// Perform your write operation inside this closure.
+			*val = *val + 5
+
+			fmt.Println("[Write] readResource: ", *val)
+
+			time.Sleep(1 * time.Second)
+		})
+	}()
+
+	err = <-errChan
+	if err != nil {
+		// Error should be printed
+		fmt.Println("[TryWrite] error: ", err)
+	}
+
+	wg.Wait()
+	close(errChan)
 }

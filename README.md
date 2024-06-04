@@ -1,12 +1,12 @@
 # Mugard
 
-Mugard is a simple extension for Mutex in golang. Inspired by Mutex in Rust Language, Mugard is protecting the data (resources) instead of protecting the code, read this [blog posts](https://medium.com/@deckarep/paradigms-of-rust-for-the-go-developer-210f67cd6a29#:~:text=Paradigm%20shift%3A%20Lock%20data%20not%20code) for more informations.
+Mugard is a simple extension for Mutex in Go. Inspired by Rust's Mutex, Mugard protects data (resources) rather than code. Read this [blog post](https://medium.com/@deckarep/paradigms-of-rust-for-the-go-developer-210f67cd6a29#:~:text=Paradigm%20shift%3A%20Lock%20data%20not%20code)  for more information.
 
 ## Requirements
 ```
 Go 1.18
 ```
-Since mugard using Generic Type. It's required to be used with **Go 1.18**
+Since mugard uses type parameters, it is required to be used with **Go 1.18** or **newer**.
 
 ## How to install
 ```bash
@@ -18,64 +18,34 @@ go get github.com/raspiantoro/mugard
 func main() {
 	guard := mugard.NewGuard(10)
 
-	readResourceOne := guard.GetRead()
+	resources := guard.GetRead()
 
-	fmt.Println("readResourceOne: ", readResourceOne)
+	fmt.Println("readResources: ", resources)
 
 	// only modify the value of readResourceOne, without
 	// affecting the value inside the Guard
-	readResourceOne = 20
+	resources = 20
 
-	readResourceTwo := guard.GetReadLock()
+	guard.ReadLock(func(val int) {
+		// Perform your read operation inside this closure while the read lock is held.
+		resources := val
 
-	// should print 10
-	fmt.Println("readResourceTwo: ", readResourceTwo)
+		// should print 10
+		fmt.Println("[ReadLock] readResource: ", resources)
+	})
 
-	guard.ReleaseRead()
+	guard.Write(func(val *int) {
+		// Perform your write operation inside this closure.
+		*val = *val + 5
 
-	writeResource := guard.GetWrite()
+		fmt.Println("[Write] readResource: ", *val)
 
-	// modifying value of writeResource also modifying
-	// the value inside the guard
-	*writeResource = 30
-
-	// data inside the guard already modify by writeResource
-	readResourceThree := guard.GetRead()
-
-	// should print 30
-	fmt.Println("readResourceThree: ", readResourceThree)
-
-	// releasing write access, so other resources
-	// can have the write access
-	err := guard.ReleaseWrite(&writeResource)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// writeResource is read only now,
-	// modify it's value won't affect the data inside the guard
-	*writeResource = 100
-
-	readResourceFour := guard.GetRead()
-
-	// should print 30
-	fmt.Println("readResourceFour: ", readResourceFour)
-
-	writeResource = guard.GetWrite()
-
-	// won't block the process
-	anotherWriteResource, err := guard.TryGetWrite()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// should block the process until previous resource that hold the value
-	// releasing their write access.
-	// in this case it will cause a deadlock, since the previous process not
-	// releasing the write access yet
-	_ = guard.GetWrite()
+		time.Sleep(1 * time.Second)
+	})
 }
 ```
+
+For more examples, refer to this [link](example/main.go)
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
